@@ -1,0 +1,648 @@
+using elsystem.collections;
+using elsystem.drawingobjects;
+using elsystem.drawing;
+using elsystem;
+using tsdata.common;
+using tsdata.trading;
+
+
+Inputs:
+	float Capital(50000),
+
+	int MALengths1(75),
+	int MALengths2(140),
+	int MALengths3(210),
+	int MALengths4(335),
+	int MALengths5(510),
+	int MALengths6(750),
+	int MALengths7(1030),
+	int MALengths8(1375),
+	
+	
+	float Purchase_Percents1(0.03),
+	float Purchase_Percents2(0.06),
+	float Purchase_Percents3(0.09),
+	float Purchase_Percents4(0.13),
+	float Purchase_Percents5(0.17),
+	float Purchase_Percents6(0.21),
+	float Purchase_Percents7(0.24),
+	float Purchase_Percents8(0.27);
+
+
+Variable:
+	OrdersProvider OP(Null),
+	PositionsProvider PP(Null),
+		
+	/////////////////////////////////////	
+	/////////////////////////////////////	
+	//////////////////////////
+	//	MAIN DATA STRUCTURE	//
+	//////////////////////////
+	Vector FOREST(Null),
+	Dictionary TREE(Null),
+	
+	Vector BANK(Null),
+	Dictionary FINANCES(Null),
+	
+		
+	Vector MAPrices(Null),
+	Vector MALengths(Null),
+	
+	// calculate the prices based on percents (golden spiral)
+	Vector Purchase_Percents(Null),
+	
+	{
+	Vector BEPrices(Null),
+	Vector BELines(Null),
+	Vector BEDTPoints(Null),
+	Vector BELabels(Null),
+	
+	TrendLine BEBranch_line(Null),
+	DTPoint BEBranch_price(Null),
+	TextLabel BEBranch_label(Null),
+	}
+	// int signifying different modes a branch should be drawn in
+	Vector BranchModes(Null),
+		
+	double PrimaryThreshHold(.12), // Flat percent from highest high
+	double SecondaryThreshHold(-1),// low of highest high bar
+	double TirtiaryThreshHold(-1), // low of three bars after the highest high
+		
+	DateTime DTPosEntry(Null),
+	double numofdaysinpos(0),
+	int quantitybuffer(0),
+	Queue OrderList(Null),
+	
+	DateTime NewDT(Null),
+	
+	double AverageDistance(-1),
+	
+	index(-1),
+	
+	HHCount(0),
+
+	initialEntry(-1),
+	HH(-1), // Highest High
+	EH(-1); // Equal High
+
+
+
+//
+//	CREATETREE()
+//
+Method void CreateTree()
+Vars:	Vector Prices,
+
+		VerticalLine VL,
+		DTPoint VLPos,
+		
+		Vector BRANCHLINEIDS,
+		Vector BRANCHLABELIDS,
+		Vector BModes,
+		
+		TrendLine Branch_line,
+		DTPoint Branch_price,
+		TextLabel Branch_label,
+		
+		Dictionary fin,
+		Vector PC,
+		Vector APC,
+		Vector PS,
+		
+		double PrimaryThreshHoldPrice;
+Begin
+//verbosebmodes();
+	
+	BRANCHLINEIDS = Vector.Create();
+	BRANCHLABELIDS = Vector.Create();
+	Prices = tree["MAPrices"] astype vector;
+	BModes = tree["BranchModes"] astype vector;
+	fin = BANK.back() astype Dictionary;
+	
+	PC = fin["Purchase_Cost"] astype Vector;
+	PS = fin["Purchase_Shares"] astype Vector;
+	APC = fin["Actual_Purchase_Cost"] astype Vector;
+	
+	VLPos = DTPoint.Create(BarDateTime[0], 0);
+	VLPos.DateTimeOfBar = BarDateTime[2];
+	
+	VL = VerticalLine.Create(VLPos);
+	VL.Weight = 1;
+	
+	DrawingObjects.Add(VL);
+	
+	TREE.Add("TRUNKID", VL);
+
+	
+	//updating the branch mades
+	For index = 0 to BModes.Count - 1 begin	
+		If Prices[index] astype double >= l then
+			BModes[index] = 0;
+		If Prices[index] astype double<= l then
+			BModes[index] = 1;
+	end;
+	
+	PrimaryThreshHoldPrice = h[2] - (PrimaryThreshHold * h[2]);
+	
+	Print("BModes List in create tree");
+	verboseBModes();	
+	For index = 0 to Prices.Count - 1 begin
+	
+		//If Prices[index] astype double < PrimaryThreshHoldPrice astype double and Bmodes[index] astype int > 0 then begin 
+			Branch_price = DTPoint.Create(BarDateTime[0], 0);
+			
+			Branch_price.DateTimeOfBar = BarDateTime[2];
+			Branch_price.Price = Prices[index] astype double;
+			
+			Branch_line = TrendLine.Create(Branch_price, Branch_price);
+			
+			Branch_line.SetStartPoint(Branch_price);
+			Branch_line.ExtRight = true;
+			Branch_line.Color = Color.Cyan;
+			Branch_line.Weight = 0;
+			
+			DrawingObjects.Add(Branch_line);
+			
+			BRANCHLINEIDS.push_back(Branch_Line);
+			
+			Branch_label = TextLabel.Create();
+	
+			Branch_label.Font = Font.Create("Arial", 10);
+			Branch_label.Color = color.AliceBlue;
+			Branch_label.HStyle = 0;
+			Branch_label.TextString = numtostr(Prices[index] astype double, 2) + 
+							   		"         " + 
+							   		Numtostr(PS[index] astype double, 0) +
+							   		" Shares" +
+							   		"         $" +
+							   		Numtostr(APC[index] astype double, 2);
+							   		
+			Branch_label.PointValue = Branch_price;
+			
+	
+			DrawingObjects.Add(Branch_label);
+			
+			BRANCHLABELIDS.push_back(Branch_label);
+	
+				
+			//end;// if below PrimaryThreshHold
+	end; // loop
+		
+	TREE.Add("BRANCHLINEIDS", BRANCHLINEIDS);	
+	
+	TREE.Add("BRANCHLABELIDS", BRANCHLABELIDS);
+	
+	FOREST.push_back(TREE.Clone() astype dictionary);
+end; // CreateTree
+
+
+
+//
+//	CLEARTREE()
+//
+// Removes current tree (trunk and branches)
+Method void ClearTree() 
+Vars: Dictionary currenttree,
+	  vector BLI, // Branch Line Ids
+	  vector BLbI; // Branch Label Ids
+begin
+	If FOREST.count > 0 then begin
+		currenttree = forest.back() astype dictionary;
+		If currenttree.Count > 0 then begin
+			DrawingObjects.Delete(currenttree["TRUNKID"] astype VerticalLine);
+			
+			BLI = currenttree["BRANCHLINEIDS"] astype vector;
+			BLbI = currenttree["BRANCHLABELIDS"] astype vector;
+
+			For index = 0 to BLI.Count - 1 begin
+				DrawingObjects.Delete(BLI[index] astype TrendLine);
+				DrawingObjects.Delete(BLbI[index] astype TextLabel);
+			end; // loop
+		
+		end; // if TREE has objects in it
+	end; // if forest has treea	
+	Tree.clear();
+	FINANCES.Clear();
+end; // ClearTree
+	
+
+//
+//	CreateFinances
+//
+Method void CreateFinances()
+Vars:		Vector Purchase_cost,
+			Vector Actual_Purchase_cost,
+			Vector Accumulative_Costs,
+			
+			Vector Purchase_Shares,
+			Vector Accumulative_Shares,
+			
+			Vector PP,
+			Dictionary OldTree,
+			Vector Prices,
+			Vector BModes,
+			
+			float tempsum1,
+			double tempsum2,
+			double tempsum3;
+Begin
+	
+	FINANCES.add("Purchase_Percents", Purchase_Percents);
+	
+	Purchase_Cost = Vector.Create(); // float
+	Actual_Purchase_Cost = Vector.Create();
+	Accumulative_Costs = Vector.Create();
+	Purchase_Shares = Vector.Create();
+	
+	If FOREST.count > 0 then begin
+		BModes = (FOREST.back() astype dictionary)["BranchModes"] astype vector;
+	End else begin
+		BModes = tree["BranchModes"] astype vector;
+	end;
+	
+	If 	(Tree["MAPrices"] astype Vector).count > 0 then begin
+		Prices = Tree["MAPrices"] astype Vector; //  double
+	End else begin
+		print("The Tree Prices do not exist yet");
+	end;
+	
+	PP = Purchase_Percents astype Vector; // float
+	
+	For index = 0 to Prices.count - 1 begin
+		Purchase_Cost.push_back(Round(PP[index] astype float * Capital astype float, 2) astype float);
+		Purchase_Shares.push_back(Round(Purchase_cost[index] astype float / Prices[index] astype double, 0));
+		Actual_Purchase_Cost.push_back(Round(Purchase_Shares[index] astype double * Prices[index] astype double, 2));
+	end; // loop
+	{
+	For index = 0 to BModes.count - 1 begin
+		If BModes[index] astype int > 0 then
+			Value1 = index;
+		For index = 0 to value1 - 1 begin
+			tempsum1 += Purchase_cost[index] astype float;
+			tempsum2 += Purchase_Shares[index] astype double;
+			tempsum3 += Actual_Purchase_Cost[index] astype double;
+		end;
+		Purchase_cost[index] = tempsum1;
+		Purchase_Shares[index] = tempsum2;
+		Actual_Purchase_Cost[index] = tempsum3;
+	end;
+	}
+	
+	//Accumulative_Shares = Vector.Create();
+	FINANCES.Add("Purchase_Cost", Purchase_Cost);
+	FINANCES.Add("Purchase_Shares", Purchase_Shares);
+	FINANCES.Add("Actual_Purchase_Cost", Actual_Purchase_Cost);
+	
+	BANK.push_back(FINANCES);
+end; // CreateFinances
+
+{
+Method void Statistics()
+Vars: double buffer,
+	  Vector keyslist;
+begin
+		print("Total Capital = ", Capital);
+	Capital_per_Position = Capital / Tradeable_portion;
+	print("Capital per Position  = ", Capital_per_Position );
+	
+2	initialEntry = (Capital / Tradeable_portion) * Initialial_buy_in_percent;
+	print(Newline, "First Buy (Dollars) = ", initialEntry);
+	
+	print(DateTime.FromELDateAndTime(Date[1], Time).ELFormatDate("MM dd yyyy"));
+	buffer = 0;
+	For index = 0 to MAPrices.Count - 2 begin
+		buffer = Buffer + (MAPrices[index] astype double - MAPrices[index+1] astype double);
+	end;
+	AverageDistance = buffer/10;
+	print("Average Distance Between Lines =", AverageDistance);
+	
+	Print(newline, "----------COMPONENTS OF A BRANCH----------", newline);
+	keyslist = (TREE[1] astype Dictionary).Keys astype vector;
+	
+	For index = 0 to keyslist.count - 1 begin
+		print(((TREE[1] astype Dictionary).Keys astype Vector)[index].tostring());
+ 	end; // loop
+end;// method statistics
+}
+
+
+
+Method void UpdateGraphics()
+Vars:   Vector BLbI,
+	    Vector BLI,
+		Vector Prices,
+		Vector BModes,
+		DTPoint newPoint,
+		TextLabel TL;
+begin
+	BLI = TREE["BRANCHLINEIDS"] astype vector;
+	BLbI = TREE["BRANCHLABELIDS"] astype vector;
+	Prices = TREE["MAPrices"] astype vector;
+	BModes = TREE["BranchModes"] astype vector;	
+		 
+	//updating the branch mades
+	For index = 0 to BLI.Count - 1 begin	
+		If BModes[index] astype int = 0 then
+			DrawingObjects.Delete(BLbI[index] astype TextLabel);
+			DrawingObjects.Delete(BLI[index] astype Trendline);
+	end;
+
+	
+	// Moving the labels foward
+	For index = 0 to BLbI.Count - 1 begin
+		newPoint = DTPoint.Create(BarDateTime, Prices[index] astype double);
+		TL = BLbI[index] astype TextLabel;
+		TL.HStyle = 1;
+		TL.SetPointValue(newPoint);	
+	end;
+
+end; // UpdateGraphics
+
+
+Method void analyze()
+Vars:	Vector Prices,
+		Vector BModes,
+		
+		int BrancesToShow,
+		int BranchShowcount;
+		
+Begin
+	//If FOREST.count > 0 then begin
+	//	Prices = (FOREST.back() astype dictionary)["MAPrices"] astype vector;
+	//	BModes = (FOREST.back() astype dictionary)["BranchModes"] astype vector;
+	//End else begin
+		//Prices = (FOREST.back() astype dictionary)["MAPrices"] astype vector;
+		Prices = tree["MAPrices"] astype vector;
+		BModes = tree["BranchModes"] astype vector;
+	//end;
+	
+	BrancesToShow = 2;
+	BranchShowcount = 0;
+	
+	{
+	BMode 0 = invisable
+	BMode 1 = visable
+	BMode 2 = dotted line no label
+	
+	BModes start at 0 for all lines
+	}
+	
+	//updating the branch modes
+	For index = 0 to BModes.Count - 1 begin	
+		If Prices[index] astype double > l and BranchShowcount <> 0 then begin
+			BModes[index] = 0;
+			BranchShowcount -= 1;
+		end;
+		If Prices[index] astype double < l and BranchShowcount < BrancesToShow{2} then begin
+			BModes[index] = 1;
+			BranchShowcount += 1;
+		end;
+		
+		If Prices[index] astype double < l and BranchShowcount > BrancesToShow then
+			BModes[index] = 2;
+	end;	
+	
+	//verbosebmodes();
+end; // Analyze
+
+
+Method void verboseBModes()
+Vars: 	Vector BModes,
+		Vector prices;
+Begin
+	print(Newline, "Verbose Mode");
+	BModes = tree["BranchModes"] astype vector;	
+	prices = tree["MAPrices"] astype vector;	
+	
+	Print(Newline, "Current Bar: ", currentbar:0:0);
+	Print("Date:  ", DateTime.FromELDateAndTime( date, time ).Format("%m-%d-%y"));
+	
+	Print(Newline, "Branch Modes ", BModes.Count:0:0);
+	For index = 0 to BModes.Count - 1 begin	
+		Print(spaces(3), bmodes[index].ToString());
+	end;
+	
+	Print(Newline, "Branch Prices ", prices.Count:0:0);
+	For index = 0 to prices.Count - 1 begin	
+		Print(spaces(3), prices[index].ToString());
+	end;
+	
+	Print(Newline, "MinMoves ", Minmove:0:0);
+	Print(Newline, "HHCount ", HHCount:0:0);
+	Print(Newline, "Last Bar On Chart ", lastbaronchart);
+	Print(newline);
+end;
+
+
+Once begin
+	Clearprintlog;
+	//
+	//	Providers
+	//	
+	PP = new PositionsProvider;
+	pp.Accounts += GetAccountId;
+	pp.Symbols += symbol;
+	pp.Load = True;
+	
+	OP = new OrdersProvider;
+	OP.From = DateTime.Parse("1/1/2016");
+	OP.To = DateTime.Now;
+	OP.Realtime = False;
+	OP.Symbols += symbol;
+	OP.Accounts += GetAccountID;
+	OP.Load = True;
+		
+	
+	FOREST = Vector.Create();
+	BANK = Vector.Create();
+	
+	TREE = Dictionary.Create();	
+	FINANCES = Dictionary.Create();
+	
+	// creating objects needed for displaying the various aspects of the tree
+	
+		
+	//Creating objects to hold neccassary information
+	MALengths = Vector.Create();
+	MAPrices = Vector.Create();
+	
+	Purchase_Percents = Vector.Create();
+
+	
+	//MALengths updated 10/4/2016
+	// 8 lines	
+	
+	MALengths.push_back(MALengths1 astype int);
+	MALengths.push_back(MALengths2 astype int);
+	MALengths.push_back(MALengths3 astype int);
+	MALengths.push_back(MALengths4 astype int);
+	MALengths.push_back(MALengths5 astype int);
+	MALengths.push_back(MALengths6 astype int);
+	MALengths.push_back(MALengths7 astype int);
+	MALengths.push_back(MALengths8 astype int);
+	
+	// Initializing Branch Modes to 0
+	BranchModes = vector.Create();
+	For index = 0 to MALengths.Count - 1 begin
+		BranchModes.push_back(1);
+	end;
+	
+	{
+	Line Placement From Current Bar is 2 because 
+	we wait for two bars to form after the high bar
+	to call it a pivot. We must put the line on
+	the high bar of the pivot.
+	
+	LPFCB = Line Placement From Current Bar
+	}	
+
+
+		
+	{
+	Purchase_Percents updated 10/4/2016
+	Purchase_Percents is the percent of the capital spent on each buy
+	8 Buys
+	}
+	Purchase_Percents.push_back(Purchase_Percents1 astype float);
+	Purchase_Percents.push_back(Purchase_Percents2 astype float);
+	Purchase_Percents.push_back(Purchase_Percents3 astype float);
+	Purchase_Percents.push_back(Purchase_Percents4 astype float);
+	Purchase_Percents.push_back(Purchase_Percents5 astype float);
+	Purchase_Percents.push_back(Purchase_Percents6 astype float);
+	Purchase_Percents.push_back(Purchase_Percents7 astype float);
+	Purchase_Percents.push_back(Purchase_Percents8 astype float);
+
+
+end; // once
+
+
+
+// 8 entries EVERY BAR
+MAPrices.push_back(Round(XAverage(Close[2], MALengths[0] astype int), 2));
+MAPrices.push_back(Round(XAverage(Close[2], MALengths[1] astype int), 2));
+MAPrices.push_back(Round(XAverage(Close[2], MALengths[2] astype int), 2));
+MAPrices.push_back(Round(XAverage(Close[2], MALengths[3] astype int), 2));
+MAPrices.push_back(Round(XAverage(Close[2], MALengths[4] astype int), 2));
+MAPrices.push_back(Round(XAverage(Close[2], MALengths[5] astype int), 2));
+MAPrices.push_back(Round(XAverage(Close[2], MALengths[6] astype int), 2));
+MAPrices.push_back(Round(XAverage(Close[2], MALengths[7] astype int), 2));
+
+
+EH = 2;
+{
+EH Stands for Equal Highs
+
+Its a simple counter that counts up from 1 when there are equal highs in the pivot
+
+This is quite rare so EH most often will only equal 1
+}
+//print(DateTime.FromELDateAndTime( date, time ).ToString());
+NewDT = DateTime.FromELDateAndTime( date[2], time );
+NewDT.AddYears(-1);
+//NewDT -= Datetime.
+//print(NewDT.Value);
+//If newDT <= DateTime.FromELDateAndTime( date, time ) then
+//Begin
+//	print(DateTime.FromELDateAndTime( date, time ).ToString());
+//end;
+
+If 	h[2] > HH and 
+	h[1]<h[2] and 
+	h[2]>h[3] and 
+	h < h[2] and 
+	h[4]< h[2] or 
+	h[2]=h[3] then begin
+	
+	// HH = Highest high without this the last high will be picked
+	if DateTime.FromELDateAndTime( date[2], time ) <= NewDT then 
+	begin
+		HH = h[2];
+	end else begin
+		HH = 0;
+	end;
+	
+	While (h[EH] = h[EH+1]) and currentbar > 1 begin
+		EH += 1;
+	end;
+
+	
+	If  h[EH]>h[EH+1] and
+		l[EH] > MAPrices[1] astype double and
+		l > MAPrices[1] astype double and 
+		MAPrices[1] astype double > MAPrices[2] astype double and
+		MAPrices[1] astype double > MAPrices[3] astype double and
+		MAPrices[1] astype double > MAPrices[4] astype double and
+		MAPrices[1] astype double > MAPrices[5] astype double and
+		MAPrices[1] astype double > MAPrices[6] astype double 
+		
+
+	then begin
+		//ClearPrintLog;
+		
+		ClearTree();
+		
+		//Update();
+		
+		//Statistics();
+		
+		TREE.add("MAPrices", MAPrices.clone() astype vector);		
+		Tree.add("BranchModes", BranchModes.clone() astype Vector);
+		
+		Analyze();
+		
+		CreateFinances();
+		CreateTree();
+		HHCount += 1;
+
+	end; // if order of lines
+end; // if Higest high 
+
+{
+        /***********\
+     /****---------****\
+   |@*****  ENTRY  *****@|
+     \****---------****/
+        \***********/
+}
+
+
+
+//print(forest.Count);
+If forest.Count <> 0 then begin
+If (forest.back() astype dictionary).count <> 0 then begin
+If ((forest.back() astype dictionary)["BRANCHLINEIDS"] astype vector).count <> 0 then begin
+	UpdateGraphics();
+	Analyze();
+end;
+end;
+end;
+
+MAPrices.clear();
+
+//end; // if in a position
+{
+If pp[0].Quantity = 0 then begin
+	print("Not in a position");
+end;
+}
+
+
+Once(LastBarOnChart) begin
+//print(symbol);
+{
+If dtposentry <> Null then
+	print(spaces(5), symbol);
+	Print("Entry Date  ", newline, DTPosEntry.ELFormatDate("dd/MM/yyyy"));
+	If forest.Count <> 0 then begin
+		print("forest count ", forest.Count:0:0);
+	end;
+	If forest.back() <> Null then begin
+		Value1 = 4;//(forest.back() astype dictionary).count;
+		print("Tree categrory count ",(forest.back() astype dictionary).count:0:0);
+	
+		For index = 0 to Value1 - 1  begin
+			print(spaces(3), ((forest.back() astype dictionary).keys astype vector)[index].tostring());
+		end;
+	end;
+	}
+end;
