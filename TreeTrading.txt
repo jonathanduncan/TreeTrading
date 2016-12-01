@@ -145,7 +145,7 @@ Begin
 	
 	PrimaryThreshHoldPrice = h[2] - (PrimaryThreshHold * h[2]);
 	
-	Print("BModes List in create tree");
+	//Print("BModes List in create tree");
 	//verboseBModes();	
 	For index = 0 to Prices.Count - 1 begin
 	
@@ -340,7 +340,8 @@ begin
 	BLbI = TREE["BRANCHLABELIDS"] astype vector;
 	Prices = TREE["MAPrices"] astype vector;
 	BModes = TREE["BranchModes"] astype vector;	
-		 
+	
+	{	 
 	//updating the branch mades
 	For index = 0 to BLI.Count - 1 begin	
 		If BModes[index] astype int = 0 then
@@ -351,7 +352,7 @@ begin
 			//DrawingObjects.Add(BLbI[index] astype TextLabel);
 			DrawingObjects.Add(BLI[index] astype Trendline);
 	end;
-
+	}
 	
 	// Moving the labels foward
 	For index = 0 to BLbI.Count - 1 begin
@@ -549,8 +550,8 @@ If 	h[2] > HH and // Head of pivot higher than HH
 	h[1]<h[2] and 
 	h[2]>h[3] and 
 	h < h[2] and 
-	h[4]< h[2] //or 
-	//h[2]=h[3] 
+	h[4]< h[2] or 
+	h[2]=h[3] 
 	then begin
 	
 	// HH = Highest high without this the last high will be picked
@@ -561,7 +562,7 @@ If 	h[2] > HH and // Head of pivot higher than HH
 	end else begin
 	//	HH = 0;
 	end;
-	print(HH);
+	
 	While (h[EH] = h[EH+1]) and currentbar > 1 begin
 		EH += 1;
 	end;
@@ -595,17 +596,19 @@ If 	h[2] > HH and // Head of pivot higher than HH
 		CreateTree();
 		HHCount += 1;
 
-	end; // if order of lines
-end; // if Higest high 
-
-{
+	{
         /***********\
      /****---------****\
-   |@*****  ENTRY  *****@|
+    @*****  ENTRY  *****@
      \****---------****/
         \***********/
-}
+	}
+	
+	OP.
 
+
+	end; // if order of lines
+end; // if Higest high 
 
 
 //print(forest.Count);
@@ -613,7 +616,7 @@ If forest.Count <> 0 then begin
 If (forest.back() astype dictionary).count <> 0 then begin
 If ((forest.back() astype dictionary)["BRANCHLINEIDS"] astype vector).count <> 0 then begin
 	UpdateGraphics();
-	Analyze();
+	//Analyze();
 end;
 end;
 end;
@@ -621,12 +624,6 @@ end;
 
 MAPrices.clear();
 
-//end; // if in a position
-{
-If pp[0].Quantity = 0 then begin
-	print("Not in a position");
-end;
-}
 
 
 Once(LastBarOnChart) begin
