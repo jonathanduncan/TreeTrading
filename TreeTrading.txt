@@ -8,25 +8,28 @@ using tsdata.trading;
 
 Inputs:
 	float Capital(50000),
-
-	int MALengths1(75),
+	
+	// MALenths and Purchase_Percents Up to date as of
+	// 12/1/2016
+	
+	int MALengths1(65),// 75
 	int MALengths2(140),
 	int MALengths3(210),
 	int MALengths4(335),
 	int MALengths5(510),
-	int MALengths6(750),
+	int MALengths6(747), // 750
 	int MALengths7(1030),
 	int MALengths8(1375),
 	
 	
-	float Purchase_Percents1(0.03),
-	float Purchase_Percents2(0.06),
-	float Purchase_Percents3(0.09),
-	float Purchase_Percents4(0.13),
-	float Purchase_Percents5(0.17),
-	float Purchase_Percents6(0.21),
-	float Purchase_Percents7(0.24),
-	float Purchase_Percents8(0.27);
+	float Purchase_Percents1(0.02),
+	float Purchase_Percents2(0.04),
+	float Purchase_Percents3(0.07),
+	float Purchase_Percents4(0.11),
+	float Purchase_Percents5(0.16),
+	float Purchase_Percents6(0.22),
+	float Purchase_Percents7(0.29),
+	float Purchase_Percents8(0.37);
 
 
 Variable:
@@ -84,8 +87,6 @@ Variable:
 	initialEntry(-1),
 	HH(-1), // Highest High
 	EH(-1); // Equal High
-
-
 
 //
 //	CREATETREE()
@@ -145,7 +146,7 @@ Begin
 	PrimaryThreshHoldPrice = h[2] - (PrimaryThreshHold * h[2]);
 	
 	Print("BModes List in create tree");
-	verboseBModes();	
+	//verboseBModes();	
 	For index = 0 to Prices.Count - 1 begin
 	
 		//If Prices[index] astype double < PrimaryThreshHoldPrice astype double and Bmodes[index] astype int > 0 then begin 
@@ -345,6 +346,10 @@ begin
 		If BModes[index] astype int = 0 then
 			DrawingObjects.Delete(BLbI[index] astype TextLabel);
 			DrawingObjects.Delete(BLI[index] astype Trendline);
+			
+		If BModes[index] astype int = 1 then
+			//DrawingObjects.Add(BLbI[index] astype TextLabel);
+			DrawingObjects.Add(BLI[index] astype Trendline);
 	end;
 
 	
@@ -424,7 +429,7 @@ Begin
 	
 	Print(Newline, "Branch Prices ", prices.Count:0:0);
 	For index = 0 to prices.Count - 1 begin	
-		Print(spaces(3), prices[index].ToString());
+		Print(spaces(3), numtostr(prices[index] astype double, 2)); 
 	end;
 	
 	Print(Newline, "MinMoves ", Minmove:0:0);
@@ -536,31 +541,27 @@ Its a simple counter that counts up from 1 when there are equal highs in the piv
 
 This is quite rare so EH most often will only equal 1
 }
-//print(DateTime.FromELDateAndTime( date, time ).ToString());
-NewDT = DateTime.FromELDateAndTime( date[2], time );
-NewDT.AddYears(-1);
-//NewDT -= Datetime.
-//print(NewDT.Value);
-//If newDT <= DateTime.FromELDateAndTime( date, time ) then
-//Begin
-//	print(DateTime.FromELDateAndTime( date, time ).ToString());
-//end;
 
-If 	h[2] > HH and 
+NewDT = DateTime.FromELDateAndTime( date[2], time );
+NewDT.AddYears(-2);
+
+If 	h[2] > HH and // Head of pivot higher than HH
 	h[1]<h[2] and 
 	h[2]>h[3] and 
 	h < h[2] and 
-	h[4]< h[2] or 
-	h[2]=h[3] then begin
+	h[4]< h[2] //or 
+	//h[2]=h[3] 
+	then begin
 	
 	// HH = Highest high without this the last high will be picked
-	if DateTime.FromELDateAndTime( date[2], time ) <= NewDT then 
+	if 	DateTime.FromELDateAndTime( date[2], time ) astype datetime >= NewDT astype datetime and 
+		h[2] > HH then 
 	begin
 		HH = h[2];
 	end else begin
-		HH = 0;
+	//	HH = 0;
 	end;
-	
+	print(HH);
 	While (h[EH] = h[EH+1]) and currentbar > 1 begin
 		EH += 1;
 	end;
@@ -616,6 +617,7 @@ If ((forest.back() astype dictionary)["BRANCHLINEIDS"] astype vector).count <> 0
 end;
 end;
 end;
+
 
 MAPrices.clear();
 
